@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { createApplication } from "./app/app";
+import { createApplication } from "./app/app.js";
+import { connectDB } from "./app/config/db.js";
 
 async function main() {
   try {
@@ -8,6 +9,7 @@ async function main() {
     const PORT: number = 8000;
 
     server.listen(PORT, () => {
+      connectDB();
       console.log(`Http server is running in PORT ${PORT}`);
     });
   } catch (error) {

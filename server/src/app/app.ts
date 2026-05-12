@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response } from "express";
 import { ApiResponse } from "./utils/ApiResponse";
 import { env } from "./config/env";
+import authRouter from "./modules/auth/auth.route";
 
 export const createApplication = (): Express => {
   const app = express();
@@ -21,6 +22,7 @@ export const createApplication = (): Express => {
       ),
     );
   });
+  app.use("/auth", authRouter);
 
   return app;
 };
