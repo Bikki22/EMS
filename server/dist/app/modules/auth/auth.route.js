@@ -3,11 +3,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authRouter = void 0;
-const express_1 = __importDefault(require("express"));
-const auth_controller_js_1 = __importDefault(require("./auth.controller.js"));
-const authenticationController = new auth_controller_js_1.default();
-exports.authRouter = express_1.default.Router();
-exports.authRouter.post("/sign-up", authenticationController.handleSignup.bind(authenticationController));
-exports.authRouter.post("/sign-in", authenticationController.handleLogin.bind(authenticationController));
+const express_1 = require("express");
+const auth_controller_1 = __importDefault(require("./auth.controller"));
+const auth_middlewares_1 = require("../../middlewares/auth.middlewares");
+const router = (0, express_1.Router)();
+const authController = new auth_controller_1.default();
+router.post("/signup", authController.handleSignup.bind(authController));
+router.post("/login", authController.handleLogin.bind(authController));
+router.post("/verify-email", authController.handleVerifyEmail.bind(authController));
+router.post("/refresh", authController.handleRefresh.bind(authController));
+router.post("/forgot-password", authController.handleForgotPassword.bind(authController));
+router.post("/reset-password", authController.handleResetPassword.bind(authController));
+router.get("/me", auth_middlewares_1.authenticate, authController.handleMe.bind(authController));
+router.post("/logout", auth_middlewares_1.authenticate, authController.handleLogout.bind(authController));
+exports.default = router;
 //# sourceMappingURL=auth.route.js.map

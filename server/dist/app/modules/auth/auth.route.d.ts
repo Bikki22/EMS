@@ -1,3 +1,4 @@
-import type { Router } from "express";
-export declare const authRouter: Router;
+import { Router } from "express";
+declare const router: Router;
+export default router;
 //# sourceMappingURL=auth.route.d.ts.map

@@ -32,13 +32,9 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.User = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
-const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const userSchema = new mongoose_1.default.Schema({
     firstName: {
         type: String,
@@ -59,14 +55,44 @@ const userSchema = new mongoose_1.default.Schema({
     },
     password: {
         type: String,
-        minLength: [6, "password must at least of 6 character"],
-        trim: true,
+        minLength: [6, "Password must be at least 6 characters"],
+        required: true,
+        select: false,
     },
-    emailVerified: {
+    salt: {
+        type: String,
+        required: true,
+        select: false,
+    },
+    isVerified: {
+        type: Boolean,
+        default: false,
+    },
+    verificationToken: {
+        type: String,
+        select: false,
+    },
+    verificationTokenExpiresAt: {
         type: Date,
-        lowerCase: true,
-        trim: true,
+        select: false,
+    },
+    passwordResetToken: {
+        type: String,
+        select: false,
+    },
+    passwordResetTokenExpiresAt: {
+        type: Date,
+        select: false,
+    },
+    refreshToken: {
+        type: String,
         default: null,
+        select: false,
+    },
+    refreshTokenFamily: {
+        type: String,
+        default: null,
+        select: false,
     },
     socialIdentities: [
         {
@@ -101,18 +127,14 @@ const userSchema = new mongoose_1.default.Schema({
         type: Date,
         default: null,
     },
-}, {
-    timestamps: true,
-});
+}, { timestamps: true });
 userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ phone: 1 }, { unique: true });
+userSchema.index({ verificationToken: 1 });
+userSchema.index({ passwordResetToken: 1 });
 userSchema.index({
     "socialIdentities.provider": 1,
     "socialIdentities.providerUserId": 1,
-});
-userSchema.pre("save", async function () {
-    if (!this.isModified("password"))
-        return;
-    this.password = await bcryptjs_1.default.hash(this.password, 10);
 });
 exports.User = (0, mongoose_1.model)("User", userSchema);
 //# sourceMappingURL=auth.model.js.map
