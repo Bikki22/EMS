@@ -78,9 +78,9 @@ export declare const eventFiltersSchema: z.ZodObject<{
     page: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     limit: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     sortBy: z.ZodDefault<z.ZodEnum<{
+        createdAt: "createdAt";
         title: "title";
         startsAt: "startsAt";
-        createdAt: "createdAt";
     }>>;
     sortOrder: z.ZodDefault<z.ZodEnum<{
         asc: "asc";
