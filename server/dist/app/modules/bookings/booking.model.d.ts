@@ -16,7 +16,7 @@ export interface IBooking extends Document {
     currency: string;
     status: "Pending" | "Confirmed" | "Cancelled" | "Refunded" | "Expired";
     paymentIntentId?: string;
-    expiresAt?: Date;
+    expiresAt?: Date | undefined;
     confirmedAt?: Date;
     cancelledAt?: Date;
     cancelReason?: string;

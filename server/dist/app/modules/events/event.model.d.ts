@@ -8,7 +8,7 @@ export interface ITicketType {
     totalQuantity: number;
     availableQuantity: number;
     quantitySold: number;
-    maxPerBooking?: number;
+    maxPerBooking: number;
     salesStartAt?: Date | undefined;
     salesEndAt?: Date | undefined;
     isActive: boolean;

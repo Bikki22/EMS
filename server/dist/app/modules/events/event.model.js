@@ -46,6 +46,11 @@ const ticketTypeSchema = new mongoose_1.default.Schema({
     currency: { type: String, required: true, default: "USD", uppercase: true },
     totalQuantity: { type: Number, required: true, min: 1 },
     availableQuantity: { type: Number, required: true, min: 0 },
+    maxPerBooking: {
+        type: Number,
+        default: 10,
+        min: [1, "Max per booking must be at least 1"],
+    },
     salesStartAt: { type: Date, required: true },
     salesEndAt: { type: Date, required: true },
     quantitySold: { type: Number, default: 0 },
