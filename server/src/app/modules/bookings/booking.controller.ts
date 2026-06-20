@@ -1,11 +1,12 @@
 import { ApiError } from "../../utils/ApiError";
 import { asyncHandler } from "../../utils/AsyncHandler";
-import { createBookingSchema } from "./booking.validation";
+import { cancelBookingSchema, createBookingSchema } from "./booking.validation";
 import { AuthRequest } from "../../types/express";
 import { Event } from "../events/event.model";
 import { Booking } from "./booking.model";
 import { ApiResponse } from "../../utils/ApiResponse";
-import mongoose from "mongoose";
+import { randomBytes } from "node:crypto";
+import { Ticket } from "../tickets/tickets.model";
 
 const BOOKING_EXPIRY_MINUTES = 15;
 const CANCELLATION_WINDOW_HOURS = 24;
@@ -184,7 +185,7 @@ class BookingController {
         booking.expiresAt = undefined;
         await booking.save();
 
-        // await this.issueTickets(booking);
+        await this.issueTicket(booking);
 
         await Event.findByIdAndUpdate(eventId, {
           $inc: {
@@ -216,4 +217,76 @@ class BookingController {
       );
     }
   }
+
+  // ─── Helper — issue tickets after confirmation ────────────────
+  private async issueTicket(booking: InstanceType<typeof Booking>) {
+    const tickestToCreate = [];
+
+    for (const item of booking.items) {
+      for (let i = 0; i < item.quantity; i++) {
+        const qrToken = randomBytes(24).toString("hex");
+
+        tickestToCreate.push({
+          booking: booking._id,
+          event: booking.event,
+          user: booking.user,
+          ticketTypeId: item.ticketTypeId,
+          ticketName: item.name,
+          qrToken,
+          status: "active",
+        });
+      }
+    }
+    // await Ticket.insertMany(tickestToCreate);
+  }
+
+  public getBooking = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const userId = req as AuthRequest;
+
+    const booking = await Booking.findById(id).populate("event", "user").lean();
+
+    if (!booking) {
+      throw new ApiError(404, "Booking not found");
+    }
+
+    // only owner or admin can view
+    // if (booking.user.toString() !== userId && req.user?.role !== "admin") {
+    //   throw new ApiError(403, "You don't have access to this booking");
+    // }
+    res.status(200).json(new ApiResponse(200, booking, "Booking fetched"));
+  });
+
+  public listMyBookings = asyncHandler(async (req, res) => {
+    const userId = (req as AuthRequest).user._id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const status = req.query.status as string | undefined;
+
+    const filter: Record<string, unknown> = { user: userId };
+    if (status) filter.status = status;
+
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter)
+        .populate("event", "title slug startsAt bannerUrl")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Booking.countDocuments(filter),
+    ]);
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          data: bookings,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+        "Bookings fetched",
+      ),
+    );
+  });
 }
