@@ -289,4 +289,84 @@ class BookingController {
       ),
     );
   });
+
+  public cancelBooking = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const userId = (req as AuthRequest).user?._id;
+    const result = cancelBookingSchema.safeParse(req.body);
+
+    if (!result.success) {
+      throw new ApiError(
+        400,
+        "Validation failed",
+        result.error.issues.map((i) => i.message),
+      );
+    }
+
+    const booking = await Booking.findById(id).populate("event");
+    if (!booking) {
+      throw new ApiError(404, "Booking not found");
+    }
+
+    if (booking.user.toString() !== userId) {
+      throw new ApiError(403, "You can only cancel your own bookings");
+    }
+
+    if (booking.status === "Cancelled") {
+      throw new ApiError(400, "Booking is already cancelled");
+    }
+
+    if (booking.status === "Expired") {
+      throw new ApiError(400, "This booking has expired");
+    }
+
+    const event = booking.event as any;
+
+    // check cancellation window
+    const hoursUntilEvent =
+      (event.startsAt.getTime() - Date.now()) / (1000 * 60 * 60);
+    if (hoursUntilEvent < CANCELLATION_WINDOW_HOURS) {
+      throw new ApiError(
+        400,
+        `Bookings can only be cancelled at least ${CANCELLATION_WINDOW_HOURS} hours before the event`,
+      );
+    }
+
+    const wasConfirmed = booking.status === "Confirmed";
+
+    // release seats back
+    for (const item of booking.items) {
+      await Event.findOneAndUpdate(
+        { _id: event._id, "ticketTypes._id": item.ticketTypeId },
+        { $inc: { "ticketTypes.$.quantitySold": -item.quantity } },
+      );
+    }
+
+    if (wasConfirmed) {
+      await Event.findByIdAndUpdate(event._id, {
+        $inc: {
+          totalBookings: -booking.items.reduce((s, i) => s + i.quantity, 0),
+        },
+      });
+
+      // cancel tickets
+      await Ticket.updateMany(
+        { booking: booking._id },
+        { $set: { status: "cancelled" } },
+      );
+    }
+
+    // refund if paid
+
+    booking.status = "Cancelled";
+    booking.cancelledAt = new Date();
+    booking.cancelReason = result.data.reason;
+    await booking.save();
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, booking, "Booking cancelled successfully"));
+  });
 }
+
+export default BookingController;

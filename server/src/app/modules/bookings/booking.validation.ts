@@ -13,7 +13,7 @@ export const createBookingSchema = z.object({
 });
 
 export const cancelBookingSchema = z.object({
-  reason: z.string().max(500).optional(),
+  reason: z.string().max(500),
 });
 
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;

@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema, Types, model } from "mongoose";
 
 interface IBookingItem {
-  ticketTypeId: Types.ObjectId;
+  ticketTypeId: string;
   name: string;
   quantity: number;
   unitPrice: number;
@@ -29,7 +29,7 @@ export interface IBooking extends Document {
 const bookingItemSchema = new Schema<IBookingItem>(
   {
     ticketTypeId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       required: true,
     },
     name: { type: String, required: true },
