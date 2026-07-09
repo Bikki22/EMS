@@ -1,3 +1,4 @@
+import type { RequestHandler } from "express";
 import { ApiError } from "../../utils/ApiError";
 import { asyncHandler } from "../../utils/AsyncHandler";
 import { cancelBookingSchema, createBookingSchema } from "./booking.validation";
@@ -5,106 +6,94 @@ import { AuthRequest } from "../../types/express";
 import { Event } from "../events/event.model";
 import { Booking } from "./booking.model";
 import { ApiResponse } from "../../utils/ApiResponse";
-import { randomBytes } from "node:crypto";
 import { Ticket } from "../tickets/tickets.model";
+import { bookingService, type SeatItem } from "./booking.service";
 
 const BOOKING_EXPIRY_MINUTES = 15;
 const CANCELLATION_WINDOW_HOURS = 24;
 
+interface BookingItemLine {
+  ticketTypeId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
 class BookingController {
-  public createBooking = asyncHandler(async (req, res) => {
+  // ─── POST /api/v1/bookings ─────────────────────────────────
+  public createBooking: RequestHandler = asyncHandler(async (req, res) => {
     const result = await createBookingSchema.safeParseAsync(req.body);
     if (!result.success) {
       throw new ApiError(
         400,
-        "validation failed",
+        "Validation failed",
         result.error.issues.map((i) => i.message),
       );
     }
 
     const { eventId, items } = result.data;
-
-    const userId = req as AuthRequest;
-
-    if (userId) {
-      throw new ApiError(401, "unauthorized");
+    const userId = (req as AuthRequest).user?._id;
+    if (!userId) {
+      throw new ApiError(401, "Unauthorized");
     }
-
-    // fetch event
 
     const event = await Event.findById(eventId);
     if (!event) {
       throw new ApiError(404, "Event not found");
     }
 
-    // validate event is bookable
     if (event.status !== "published") {
       throw new ApiError(400, "This event is not open for booking");
     }
 
-    if (event.startsAt > new Date()) {
+    // event must still be in the future
+    if (event.startsAt.getTime() <= Date.now()) {
       throw new ApiError(400, "This event has already started");
     }
 
-    // validate each ticketType + build booking item
-
-    const bookingItems: {
-      ticketTypeId: string;
-      name: string;
-      quantity: number;
-      unitPrice: number;
-      subtotal: number;
-    }[] = [];
-
-    let totalAmount: number = 0;
+    // 1. Validate every requested item and compute pricing (no mutation yet).
+    const now = new Date();
+    const bookingItems: BookingItemLine[] = [];
+    let totalAmount = 0;
+    let currency = "NPR";
 
     for (const item of items) {
       const ticketType = event.ticketTypes.find(
         (tt) => tt._id?.toString() === item.ticketTypeId,
       );
 
-      if (!ticketType) {
-        throw new ApiError(404, `Ticket type ${item.ticketTypeId} not found`);
-      }
-
-      if (!ticketType._id) {
+      if (!ticketType || !ticketType._id) {
         throw new ApiError(404, `Ticket type ${item.ticketTypeId} not found`);
       }
 
       if (!ticketType.isActive) {
         throw new ApiError(
           400,
-          `tick type ${ticketType.name} is not available`,
+          `Ticket type "${ticketType.name}" is not available`,
         );
       }
-
-      // check sale window
-      const now = new Date();
 
       if (ticketType.salesStartAt && now < ticketType.salesStartAt) {
         throw new ApiError(
           400,
-          `Ticket sales ${ticketType.name} have't satrted yet`,
+          `Ticket sales for "${ticketType.name}" haven't started yet`,
         );
       }
 
       if (ticketType.salesEndAt && now > ticketType.salesEndAt) {
         throw new ApiError(
           400,
-          `Ticket sales for ${ticketType.name} have ended`,
+          `Ticket sales for "${ticketType.name}" have ended`,
         );
       }
-
-      //   check max per booking
 
       if (item.quantity > ticketType.maxPerBooking) {
         throw new ApiError(
           400,
-          `maximum ${ticketType.maxPerBooking} tickets allowed booking for ${ticketType.name}`,
+          `A maximum of ${ticketType.maxPerBooking} "${ticketType.name}" tickets is allowed per booking`,
         );
       }
-
-      //   check availability
 
       if (item.quantity > ticketType.availableQuantity) {
         throw new ApiError(
@@ -115,149 +104,119 @@ class BookingController {
 
       const subtotal = ticketType.price * item.quantity;
       totalAmount += subtotal;
+      currency = ticketType.currency || currency;
 
       bookingItems.push({
-        ticketTypeId: ticketType._id,
+        ticketTypeId: ticketType._id.toString(),
         name: ticketType.name,
         quantity: item.quantity,
         unitPrice: ticketType.price,
         subtotal,
       });
+    }
 
-      for (const item of bookingItems) {
-        const updated = await Event.findOneAndUpdate(
-          {
-            _id: eventId,
-            ticketTypes: {
-              $elemMatch: {
-                _id: item.ticketTypeId,
-                $expr: {
-                  $lte: [
-                    { $add: ["$$this.quantitySold", item.quantity] },
-                    "$$this.quantity",
-                  ],
-                },
-              },
-            },
-          },
-          {
-            $inc: { "ticketTypes.$[elem].quantitySold": item.quantity },
-          },
-          {
-            arrayFilters: [{ "elem._id": item.ticketTypeId }],
-            new: true,
-          },
-        );
-
-        // fallback simpler check if $expr in elemMatch isn't supported in your mongo version:
-        if (!updated) {
-          await this.rollbackSeatLocks(
-            eventId,
-            bookingItems.slice(0, bookingItems.indexOf(item)),
-          );
-          throw new ApiError(
-            409,
-            `Seats for "${item.name}" were just taken. Please try again.`,
-          );
-        }
-      }
-
-      // 5. create booking record (status: pending, expires in 15 min)
-      const expiresAt = new Date(
-        Date.now() + BOOKING_EXPIRY_MINUTES * 60 * 1000,
+    // 2. Atomically reserve seats. Roll back everything already held if any
+    //    ticket type just sold out under a concurrent booking.
+    const reserved: SeatItem[] = [];
+    for (const line of bookingItems) {
+      const ok = await bookingService.reserveSeats(
+        eventId,
+        line.ticketTypeId,
+        line.quantity,
       );
 
-      const booking = await Booking.create({
+      if (!ok) {
+        await bookingService.releaseSeats(eventId, reserved);
+        throw new ApiError(
+          409,
+          `Seats for "${line.name}" were just taken. Please try again.`,
+        );
+      }
+
+      reserved.push({
+        ticketTypeId: line.ticketTypeId,
+        quantity: line.quantity,
+      });
+    }
+
+    // 3. Create the pending booking with a hold window.
+    const expiresAt = new Date(
+      Date.now() + BOOKING_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    let booking;
+    try {
+      booking = await Booking.create({
         user: userId,
         event: event._id,
         organization: event.organizer,
         items: bookingItems,
         totalAmount,
-        currency: "usd",
+        currency,
         status: "Pending",
         expiresAt,
       });
-
-      // 6. handle free events — auto-confirm immediately
-      if (totalAmount === 0) {
-        booking.status = "Confirmed";
-        booking.confirmedAt = new Date();
-        booking.expiresAt = undefined;
-        await booking.save();
-
-        await this.issueTicket(booking);
-
-        await Event.findByIdAndUpdate(eventId, {
-          $inc: {
-            totalBookings: bookingItems.reduce((s, i) => s + i.quantity, 0),
-          },
-        });
-
-        return res
-          .status(201)
-          .json(
-            new ApiResponse(
-              201,
-              { booking, requiresPayment: false },
-              "Booking confirmed",
-            ),
-          );
-      }
+    } catch (err) {
+      // creation failed after seats were held — release them
+      await bookingService.releaseSeats(eventId, reserved);
+      throw err;
     }
+
+    // 4. Free events confirm immediately; paid events await payment.
+    if (totalAmount === 0) {
+      const confirmed = await bookingService.confirmBooking(booking._id);
+      return res
+        .status(201)
+        .json(
+          new ApiResponse(
+            201,
+            { booking: confirmed, requiresPayment: false },
+            "Booking confirmed",
+          ),
+        );
+    }
+
+    return res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          booking,
+          requiresPayment: true,
+          expiresAt,
+          next: "POST /api/v1/payments/initiate with { bookingId, provider }",
+        },
+        "Booking reserved. Complete payment to confirm.",
+      ),
+    );
   });
 
-  private async rollbackSeatLocks(
-    eventId: string,
-    items: { ticketTypeId: string; quantity: number }[],
-  ) {
-    for (const item of items) {
-      await Event.findOneAndUpdate(
-        { _id: eventId, "ticketTypes._id": item.ticketTypeId },
-        { $inc: { "ticketTypes.$.quantitySold": -item.quantity } },
-      );
-    }
-  }
-
-  // ─── Helper — issue tickets after confirmation ────────────────
-  private async issueTicket(booking: InstanceType<typeof Booking>) {
-    const tickestToCreate = [];
-
-    for (const item of booking.items) {
-      for (let i = 0; i < item.quantity; i++) {
-        const qrToken = randomBytes(24).toString("hex");
-
-        tickestToCreate.push({
-          booking: booking._id,
-          event: booking.event,
-          user: booking.user,
-          ticketTypeId: item.ticketTypeId,
-          ticketName: item.name,
-          qrToken,
-          status: "active",
-        });
-      }
-    }
-    // await Ticket.insertMany(tickestToCreate);
-  }
-
-  public getBooking = asyncHandler(async (req, res) => {
+  // ─── GET /api/v1/bookings/:id ──────────────────────────────
+  public getBooking: RequestHandler = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const userId = req as AuthRequest;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user?._id;
 
-    const booking = await Booking.findById(id).populate("event", "user").lean();
+    const booking = await Booking.findById(id)
+      .populate("event", "title slug startsAt bannerUrl")
+      .lean();
 
     if (!booking) {
       throw new ApiError(404, "Booking not found");
     }
 
-    // only owner or admin can view
-    // if (booking.user.toString() !== userId && req.user?.role !== "admin") {
-    //   throw new ApiError(403, "You don't have access to this booking");
-    // }
+    // only the owner or an admin may view a booking
+    if (
+      booking.user.toString() !== userId &&
+      authReq.user?.roles !== "admin"
+    ) {
+      throw new ApiError(403, "You don't have access to this booking");
+    }
+
     res.status(200).json(new ApiResponse(200, booking, "Booking fetched"));
   });
 
-  public listMyBookings = asyncHandler(async (req, res) => {
+  // ─── GET /api/v1/bookings ──────────────────────────────────
+  public listMyBookings: RequestHandler = asyncHandler(async (req, res) => {
     const userId = (req as AuthRequest).user._id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -275,6 +234,7 @@ class BookingController {
         .lean(),
       Booking.countDocuments(filter),
     ]);
+
     res.status(200).json(
       new ApiResponse(
         200,
@@ -290,7 +250,8 @@ class BookingController {
     );
   });
 
-  public cancelBooking = asyncHandler(async (req, res) => {
+  // ─── DELETE /api/v1/bookings/:id ───────────────────────────
+  public cancelBooking: RequestHandler = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const userId = (req as AuthRequest).user?._id;
     const result = cancelBookingSchema.safeParse(req.body);
@@ -320,11 +281,13 @@ class BookingController {
       throw new ApiError(400, "This booking has expired");
     }
 
-    const event = booking.event as any;
+    const event = booking.event as unknown as {
+      _id: unknown;
+      startsAt: Date;
+    };
 
-    // check cancellation window
     const hoursUntilEvent =
-      (event.startsAt.getTime() - Date.now()) / (1000 * 60 * 60);
+      (new Date(event.startsAt).getTime() - Date.now()) / (1000 * 60 * 60);
     if (hoursUntilEvent < CANCELLATION_WINDOW_HOURS) {
       throw new ApiError(
         400,
@@ -334,30 +297,29 @@ class BookingController {
 
     const wasConfirmed = booking.status === "Confirmed";
 
-    // release seats back
-    for (const item of booking.items) {
-      await Event.findOneAndUpdate(
-        { _id: event._id, "ticketTypes._id": item.ticketTypeId },
-        { $inc: { "ticketTypes.$.quantitySold": -item.quantity } },
-      );
-    }
+    // release seats back to inventory
+    await bookingService.releaseSeats(
+      booking.event as never,
+      booking.items.map((i) => ({
+        ticketTypeId: i.ticketTypeId,
+        quantity: i.quantity,
+      })),
+    );
 
     if (wasConfirmed) {
+      const totalQty = booking.items.reduce((s, i) => s + i.quantity, 0);
       await Event.findByIdAndUpdate(event._id, {
-        $inc: {
-          totalBookings: -booking.items.reduce((s, i) => s + i.quantity, 0),
-        },
+        $inc: { totalBookings: -totalQty },
       });
 
-      // cancel tickets
       await Ticket.updateMany(
         { booking: booking._id },
         { $set: { status: "cancelled" } },
       );
     }
 
-    // refund if paid
-
+    // NOTE: refunds for paid bookings are handled out of band via the payment
+    // provider; mark the booking cancelled here.
     booking.status = "Cancelled";
     booking.cancelledAt = new Date();
     booking.cancelReason = result.data.reason;

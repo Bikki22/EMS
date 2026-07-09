@@ -39,6 +39,7 @@ export interface IEvent extends Document {
   bannerUrl: string | null;
   status: "draft" | "published" | "cancelled";
   totalCapacity: number;
+  totalBookings: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +59,7 @@ const ticketTypeSchema = new mongoose.Schema<ITicketType>({
   salesStartAt: { type: Date, required: true },
   salesEndAt: { type: Date, required: true },
   quantitySold: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
 });
 
 const eventLocationSchema = new mongoose.Schema<IEventLocation>(
@@ -101,6 +103,7 @@ const eventSchema = new mongoose.Schema<IEvent>(
       index: true,
     },
     totalCapacity: { type: Number, default: 0 },
+    totalBookings: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

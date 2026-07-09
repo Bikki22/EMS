@@ -89,6 +89,7 @@ export class AuthService {
     const { accessToken, refreshToken } = await this.issueTokenPair(
       user._id.toString(),
       user.email,
+      user.roles,
     );
 
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
@@ -96,11 +97,11 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  public async issueTokenPair(userId: string, email: string) {
+  public async issueTokenPair(userId: string, email: string, roles: string) {
     const familyId = generateFamilyId();
     const jti = generateJti();
 
-    const accessToken = issueAccessToken(userId, email);
+    const accessToken = issueAccessToken(userId, email, roles);
     const refreshToken = issueRefreshToken(userId, familyId, jti);
 
     await User.findByIdAndUpdate(userId, {
@@ -114,10 +115,11 @@ export class AuthService {
   public async rotateRefreshToken(
     userId: string,
     email: string,
+    roles: string,
     familyId: string,
   ) {
     const jti = generateJti();
-    const accessToken = issueAccessToken(userId, email);
+    const accessToken = issueAccessToken(userId, email, roles);
     const refreshToken = issueRefreshToken(userId, familyId, jti);
 
     await User.findByIdAndUpdate(userId, {

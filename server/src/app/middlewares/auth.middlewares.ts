@@ -21,7 +21,11 @@ export const authenticate = (
 
   try {
     const payload = verifyAccessToken(token);
-    (req as AuthRequest).user = { _id: payload.sub, email: payload.email };
+    (req as AuthRequest).user = {
+      _id: payload.sub,
+      email: payload.email,
+      roles: payload.roles,
+    };
     next();
   } catch {
     return res.status(401).json({ message: "Invalid or expired token" });

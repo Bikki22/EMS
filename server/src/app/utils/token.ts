@@ -13,8 +13,12 @@ export const generateOpaqueToken = () => randomBytes(32).toString("hex");
 export const hashToken = (token: string): string =>
   createHmac("sha256", TOKEN_HASH_SECRET).update(token).digest("hex");
 
-export const issueAccessToken = (sub: string, email: string): string => {
-  const payload: AccessPayload = { sub, email, type: "access" };
+export const issueAccessToken = (
+  sub: string,
+  email: string,
+  roles: string,
+): string => {
+  const payload: AccessPayload = { sub, email, roles, type: "access" };
   return jwt.sign(payload, ACCESS_SECRET, { expiresIn: "15m" });
 };
 

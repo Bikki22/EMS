@@ -128,6 +128,7 @@ class AuthenticationController {
       await authService.rotateRefreshToken(
         user._id.toString(),
         user.email,
+        user.roles,
         payload.familyId,
       );
 

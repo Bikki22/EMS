@@ -44,8 +44,8 @@ const bookingSchema = new Schema<IBooking>(
   {
     user: {
       type: Schema.Types.ObjectId,
-      ref: "user",
-      requried: true,
+      ref: "User",
+      required: true,
     },
     event: {
       type: Schema.Types.ObjectId,
@@ -54,7 +54,7 @@ const bookingSchema = new Schema<IBooking>(
     },
     organization: {
       type: Schema.Types.ObjectId,
-      ref: "Organization",
+      ref: "Organizer",
       required: true,
     },
     items: {
@@ -68,16 +68,16 @@ const bookingSchema = new Schema<IBooking>(
 
     totalAmount: {
       type: Number,
-      requried: true,
+      required: true,
       min: 0,
     },
     currency: {
       type: String,
-      default: "USD",
+      default: "NPR",
     },
     status: {
       type: String,
-      enum: ["pending", "Conifirmed", "Cancelled", "Refunded", "Expired"],
+      enum: ["Pending", "Confirmed", "Cancelled", "Refunded", "Expired"],
       default: "Pending",
     },
     paymentIntentId: {
