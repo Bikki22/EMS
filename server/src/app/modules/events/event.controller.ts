@@ -7,6 +7,7 @@ import {
   publishEventSchema,
 } from "./event.validation";
 import type { OrganizerRequest } from "./event.types";
+import type { AuthRequest } from "../../types/express";
 
 const eventService = new EventService();
 
@@ -45,37 +46,57 @@ class EventController {
       });
     }
 
+    // Public browse: published events only, whatever `status` was asked for.
     const data = await eventService.getEvents(filterEvent.data);
     return res.status(200).json({ data });
   }
 
-  public async handleGetEventBySlug(req: Request, res: Response) {
+  /**
+   * Organizer profile id of the caller, when they are signed in and have one.
+   * Lets the by-id and by-slug endpoints show an organizer their own drafts
+   * without exposing them to anyone else.
+   */
+  private async viewerOrganizerId(req: Request): Promise<string | undefined> {
+    const userId = (req as AuthRequest).user?._id;
+    if (!userId) return undefined;
+
+    const organizer = await eventService.getOrganizerByUserId(userId);
+    return organizer ? organizer._id.toString() : undefined;
+  }
+
+  public handleGetEventBySlug = async (req: Request, res: Response) => {
     const { slug } = req.params;
     if (!slug || typeof slug !== "string") {
       return res.status(400).json({ message: "Invalid or missing event slug" });
     }
-    const event = await eventService.getEventBySlug(slug);
+    const event = await eventService.getEventBySlug(
+      slug,
+      await this.viewerOrganizerId(req),
+    );
 
     if (!event) {
       return res.status(404).json({ message: "Event not found" });
     }
 
     return res.status(200).json({ data: { event } });
-  }
+  };
 
-  public async handleGetEventById(req: Request, res: Response) {
+  public handleGetEventById = async (req: Request, res: Response) => {
     const { id } = req.params;
     if (!id || typeof id !== "string") {
       return res.status(400).json({ message: "Invalid or missing event ID" });
     }
-    const event = await eventService.getEventById(id);
+    const event = await eventService.getEventById(
+      id,
+      await this.viewerOrganizerId(req),
+    );
 
     if (!event) {
       return res.status(404).json({ message: "Event not found" });
     }
 
     return res.status(200).json({ data: { event } });
-  }
+  };
 
   public async handleUpdateEvent(req: Request, res: Response) {
     const validateUpdateSchema = await updateEventSchema.safeParseAsync(

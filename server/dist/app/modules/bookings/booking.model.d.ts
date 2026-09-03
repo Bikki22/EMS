@@ -1,6 +1,6 @@
 import mongoose, { Document, Types } from "mongoose";
 interface IBookingItem {
-    ticketTypeId: Types.ObjectId;
+    ticketTypeId: string;
     name: string;
     quantity: number;
     unitPrice: number;

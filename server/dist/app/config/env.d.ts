@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { z } from "zod";
 declare const envSchema: z.ZodObject<{
     NODE_ENV: z.ZodDefault<z.ZodEnum<{
@@ -5,12 +6,53 @@ declare const envSchema: z.ZodObject<{
         production: "production";
         test: "test";
     }>>;
-    DATABASE_URL: z.ZodString;
-}, z.core.$strip>;
+    PORT: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    MONGO_URI: z.ZodString;
+    ACCESS_TOKEN_SECRET: z.ZodString;
+    REFRESH_TOKEN_SECRET: z.ZodString;
+    TOKEN_HASH_SECRET: z.ZodString;
+    CLIENT_URL: z.ZodOptional<z.ZodString>;
+    SERVER_URL: z.ZodOptional<z.ZodString>;
+    CORS_ORIGINS: z.ZodOptional<z.ZodString>;
+    SMTP_HOST: z.ZodOptional<z.ZodString>;
+    SMTP_PORT: z.ZodOptional<z.ZodCoercedNumber<unknown>>;
+    SMTP_SECURE: z.ZodOptional<z.ZodString>;
+    SMTP_USER: z.ZodOptional<z.ZodString>;
+    SMTP_PASS: z.ZodOptional<z.ZodString>;
+    EMAIL_FROM_NAME: z.ZodOptional<z.ZodString>;
+    EMAIL_FROM_ADDRESS: z.ZodOptional<z.ZodString>;
+    KHALTI_BASE_URL: z.ZodOptional<z.ZodString>;
+    KHALTI_SECRET_KEY: z.ZodOptional<z.ZodString>;
+    ESEWA_FORM_URL: z.ZodOptional<z.ZodString>;
+    ESEWA_STATUS_URL: z.ZodOptional<z.ZodString>;
+    ESEWA_PRODUCT_CODE: z.ZodOptional<z.ZodString>;
+    ESEWA_SECRET_KEY: z.ZodOptional<z.ZodString>;
+}, z.core.$loose>;
 export declare const env: {
+    [x: string]: unknown;
     NODE_ENV: "development" | "production" | "test";
-    DATABASE_URL: string;
-} | undefined;
+    PORT: number;
+    MONGO_URI: string;
+    ACCESS_TOKEN_SECRET: string;
+    REFRESH_TOKEN_SECRET: string;
+    TOKEN_HASH_SECRET: string;
+    CLIENT_URL?: string | undefined;
+    SERVER_URL?: string | undefined;
+    CORS_ORIGINS?: string | undefined;
+    SMTP_HOST?: string | undefined;
+    SMTP_PORT?: number | undefined;
+    SMTP_SECURE?: string | undefined;
+    SMTP_USER?: string | undefined;
+    SMTP_PASS?: string | undefined;
+    EMAIL_FROM_NAME?: string | undefined;
+    EMAIL_FROM_ADDRESS?: string | undefined;
+    KHALTI_BASE_URL?: string | undefined;
+    KHALTI_SECRET_KEY?: string | undefined;
+    ESEWA_FORM_URL?: string | undefined;
+    ESEWA_STATUS_URL?: string | undefined;
+    ESEWA_PRODUCT_CODE?: string | undefined;
+    ESEWA_SECRET_KEY?: string | undefined;
+};
 export type Env = z.infer<typeof envSchema>;
 export {};
 //# sourceMappingURL=env.d.ts.map

@@ -11,6 +11,8 @@ exports.createBookingSchema = zod_1.z.object({
     }))
         .min(1, "At least one ticket item is requried"),
 });
+// `reason` is optional: DELETE is routinely sent with no body at all, and
+// requiring it made the cancel endpoint unreachable from most HTTP clients.
 exports.cancelBookingSchema = zod_1.z.object({
     reason: zod_1.z.string().max(500).optional(),
 });

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 declare class AuthenticationController {
     handleSignup(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     handleVerifyEmail(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    handleResendVerification(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     handleLogin(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     handleRefresh(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     handleForgotPassword(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;

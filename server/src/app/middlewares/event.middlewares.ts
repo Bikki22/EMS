@@ -9,6 +9,10 @@ export const requireOrganizer = async (
   res: Response,
   next: NextFunction,
 ) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const organizer = await Organizer.findOne({ userId: req.user._id });
 
   if (!organizer) {

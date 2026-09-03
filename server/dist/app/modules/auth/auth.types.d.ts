@@ -1,6 +1,7 @@
 export interface AccessPayload {
     sub: string;
     email: string;
+    roles: string;
     type: "access";
 }
 export interface RefreshPayload {

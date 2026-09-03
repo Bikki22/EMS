@@ -36,6 +36,7 @@ export interface IEvent extends Document {
     bannerUrl: string | null;
     status: "draft" | "published" | "cancelled";
     totalCapacity: number;
+    totalBookings: number;
     createdAt: Date;
     updatedAt: Date;
 }

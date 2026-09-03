@@ -13,6 +13,9 @@ export declare const signinPayloadModel: z.ZodObject<{
 export declare const forgotPasswordModel: z.ZodObject<{
     email: z.ZodString;
 }, z.core.$strip>;
+export declare const resendVerificationModel: z.ZodObject<{
+    email: z.ZodString;
+}, z.core.$strip>;
 export declare const resetPasswordModel: z.ZodObject<{
     token: z.ZodString;
     password: z.ZodString;

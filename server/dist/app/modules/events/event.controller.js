@@ -32,31 +32,44 @@ class EventController {
                 error: filterEvent.error.issues,
             });
         }
+        // Public browse: published events only, whatever `status` was asked for.
         const data = await eventService.getEvents(filterEvent.data);
         return res.status(200).json({ data });
     }
-    async handleGetEventBySlug(req, res) {
+    /**
+     * Organizer profile id of the caller, when they are signed in and have one.
+     * Lets the by-id and by-slug endpoints show an organizer their own drafts
+     * without exposing them to anyone else.
+     */
+    async viewerOrganizerId(req) {
+        const userId = req.user?._id;
+        if (!userId)
+            return undefined;
+        const organizer = await eventService.getOrganizerByUserId(userId);
+        return organizer ? organizer._id.toString() : undefined;
+    }
+    handleGetEventBySlug = async (req, res) => {
         const { slug } = req.params;
         if (!slug || typeof slug !== "string") {
             return res.status(400).json({ message: "Invalid or missing event slug" });
         }
-        const event = await eventService.getEventBySlug(slug);
+        const event = await eventService.getEventBySlug(slug, await this.viewerOrganizerId(req));
         if (!event) {
             return res.status(404).json({ message: "Event not found" });
         }
         return res.status(200).json({ data: { event } });
-    }
-    async handleGetEventById(req, res) {
+    };
+    handleGetEventById = async (req, res) => {
         const { id } = req.params;
         if (!id || typeof id !== "string") {
             return res.status(400).json({ message: "Invalid or missing event ID" });
         }
-        const event = await eventService.getEventById(id);
+        const event = await eventService.getEventById(id, await this.viewerOrganizerId(req));
         if (!event) {
             return res.status(404).json({ message: "Event not found" });
         }
         return res.status(200).json({ data: { event } });
-    }
+    };
     async handleUpdateEvent(req, res) {
         const validateUpdateSchema = await event_validation_1.updateEventSchema.safeParseAsync(req.body);
         if (!validateUpdateSchema.success) {

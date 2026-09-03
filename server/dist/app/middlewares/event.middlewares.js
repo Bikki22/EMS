@@ -4,6 +4,9 @@ exports.requireOrganizer = void 0;
 const organizer_model_1 = require("../modules/events/organizer.model");
 // ensures the authenticated user has an organizer profile
 const requireOrganizer = async (req, res, next) => {
+    if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
     const organizer = await organizer_model_1.Organizer.findOne({ userId: req.user._id });
     if (!organizer) {
         return res.status(403).json({

@@ -15,7 +15,14 @@ export declare class EventService {
     } & {
         id: string;
     }>;
-    getEvents(filters: EventFilters): Promise<{
+    /**
+     * `includeUnpublished` is opt-in and only set by the organizer-scoped
+     * listing. The public browse endpoint must never surface drafts, so a
+     * caller-supplied `status` filter is ignored there.
+     */
+    getEvents(filters: EventFilters, opts?: {
+        includeUnpublished?: boolean;
+    }): Promise<{
         events: (import("./event.model").IEvent & Required<{
             _id: import("mongoose").Types.ObjectId;
         }> & {
@@ -30,12 +37,18 @@ export declare class EventService {
             hasPrev: boolean;
         };
     }>;
-    getEventById(eventId: string): Promise<(import("./event.model").IEvent & Required<{
+    /**
+     * A draft or cancelled event is only visible to the organizer that owns it.
+     * `viewerOrganizerId` is the viewing user's organizer profile when they have
+     * one; everyone else sees published events only.
+     */
+    private isVisibleTo;
+    getEventById(eventId: string, viewerOrganizerId?: string): Promise<(import("./event.model").IEvent & Required<{
         _id: import("mongoose").Types.ObjectId;
     }> & {
         __v: number;
     }) | null>;
-    getEventBySlug(slug: string): Promise<(import("./event.model").IEvent & Required<{
+    getEventBySlug(slug: string, viewerOrganizerId?: string): Promise<(import("./event.model").IEvent & Required<{
         _id: import("mongoose").Types.ObjectId;
     }> & {
         __v: number;
@@ -47,7 +60,19 @@ export declare class EventService {
     } & {
         id: string;
     }) | null>;
-    updateEventStatus(eventId: string, organizerId: string, status: "published" | "cancelled"): Promise<(import("mongoose").Document<unknown, {}, import("./event.model").IEvent, {}, import("mongoose").DefaultSchemaOptions> & import("./event.model").IEvent & Required<{
+    /**
+     * Fold an incoming ticket-type array into the stored one.
+     *
+     * Rebuilding the array from the request wholesale used to reset
+     * `quantitySold` to 0 and mint fresh subdocument _ids, which both oversold
+     * the event and orphaned every existing booking's `ticketTypeId`. Entries
+     * carrying an `_id` are therefore matched to the stored ticket type and keep
+     * its identity and sold count; only genuinely new entries start empty.
+     */
+    private mergeTicketTypes;
+    /** Bookings that still hold seats on this event. */
+    private countLiveBookings;
+    updateEventStatus(eventId: string, organizerId: string, status: "draft" | "published" | "cancelled"): Promise<(import("mongoose").Document<unknown, {}, import("./event.model").IEvent, {}, import("mongoose").DefaultSchemaOptions> & import("./event.model").IEvent & Required<{
         _id: import("mongoose").Types.ObjectId;
     }> & {
         __v: number;

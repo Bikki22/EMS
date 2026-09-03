@@ -59,9 +59,10 @@ const userSchema = new mongoose_1.default.Schema({
         required: true,
         select: false,
     },
+    // Only ever set on legacy HMAC-SHA256 accounts, and unset once the user
+    // next logs in and the password is rehashed with bcrypt.
     salt: {
         type: String,
-        required: true,
         select: false,
     },
     isVerified: {
@@ -91,6 +92,18 @@ const userSchema = new mongoose_1.default.Schema({
     },
     refreshTokenFamily: {
         type: String,
+        default: null,
+        select: false,
+    },
+    // A rotated refresh token stays usable for a short grace window so that
+    // two tabs refreshing at the same instant don't knock each other out.
+    previousRefreshToken: {
+        type: String,
+        default: null,
+        select: false,
+    },
+    previousRefreshTokenExpiresAt: {
+        type: Date,
         default: null,
         select: false,
     },
@@ -128,13 +141,7 @@ const userSchema = new mongoose_1.default.Schema({
         default: null,
     },
 }, { timestamps: true });
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { unique: true });
-userSchema.index({ verificationToken: 1 });
-userSchema.index({ passwordResetToken: 1 });
-userSchema.index({
-    "socialIdentities.provider": 1,
-    "socialIdentities.providerUserId": 1,
-});
+// email and phone already declare `unique: true` on the field, which builds the
+// index. Repeating it here made Mongoose log a duplicate-index warning on boot.
 exports.User = (0, mongoose_1.model)("User", userSchema);
 //# sourceMappingURL=auth.model.js.map

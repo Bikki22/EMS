@@ -140,9 +140,7 @@ class BookingController {
     }
 
     // 3. Create the pending booking with a hold window.
-    const expiresAt = new Date(
-      Date.now() + BOOKING_EXPIRY_MINUTES * 60 * 1000,
-    );
+    const expiresAt = new Date(Date.now() + BOOKING_EXPIRY_MINUTES * 60 * 1000);
 
     let booking;
     try {
@@ -205,10 +203,7 @@ class BookingController {
     }
 
     // only the owner or an admin may view a booking
-    if (
-      booking.user.toString() !== userId &&
-      authReq.user?.roles !== "admin"
-    ) {
+    if (booking.user.toString() !== userId && authReq.user?.roles !== "admin") {
       throw new ApiError(403, "You don't have access to this booking");
     }
 
@@ -217,7 +212,7 @@ class BookingController {
 
   // ─── GET /api/v1/bookings ──────────────────────────────────
   public listMyBookings: RequestHandler = asyncHandler(async (req, res) => {
-    const userId = (req as AuthRequest).user._id;
+    const userId = (req as AuthRequest).user?._id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const status = req.query.status as string | undefined;
@@ -254,7 +249,8 @@ class BookingController {
   public cancelBooking: RequestHandler = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const userId = (req as AuthRequest).user?._id;
-    const result = cancelBookingSchema.safeParse(req.body);
+    // Express leaves req.body undefined when a DELETE arrives without one.
+    const result = cancelBookingSchema.safeParse(req.body ?? {});
 
     if (!result.success) {
       throw new ApiError(
@@ -279,6 +275,12 @@ class BookingController {
 
     if (booking.status === "Expired") {
       throw new ApiError(400, "This booking has expired");
+    }
+
+    // A refund already returned these seats to inventory; cancelling on top of
+    // that would release them a second time.
+    if (booking.status === "Refunded") {
+      throw new ApiError(400, "This booking has already been refunded");
     }
 
     const event = booking.event as unknown as {
@@ -322,7 +324,9 @@ class BookingController {
     // provider; mark the booking cancelled here.
     booking.status = "Cancelled";
     booking.cancelledAt = new Date();
-    booking.cancelReason = result.data.reason;
+    if (result.data.reason !== undefined) {
+      booking.cancelReason = result.data.reason;
+    }
     await booking.save();
 
     res

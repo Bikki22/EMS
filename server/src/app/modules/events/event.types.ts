@@ -34,19 +34,19 @@ export interface CreateEventData {
 export interface UpdateEventData extends Partial<CreateEventData> {}
 
 export interface EventFilters {
-  category?: string;
-  city?: string;
-  country?: string;
-  locationType?: "online" | "physical";
-  startFrom?: Date;
-  startTo?: Date;
-  search?: string;
-  status?: "draft" | "published" | "cancelled";
-  organizerId?: string;
-  page?: number;
-  limit?: number;
-  sortBy?: "startsAt" | "createdAt" | "title";
-  sortOrder?: "asc" | "desc";
+  category?: string | undefined;
+  city?: string | undefined;
+  country?: string | undefined;
+  locationType?: "online" | "physical" | undefined;
+  startFrom?: Date | undefined;
+  startTo?: Date | undefined;
+  search?: string | undefined;
+  status?: "draft" | "published" | "cancelled" | undefined;
+  organizerId?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+  sortBy?: "startsAt" | "createdAt" | "title" | undefined;
+  sortOrder?: "asc" | "desc" | undefined;
 }
 
 export interface OrganizerRequest extends AuthRequest {

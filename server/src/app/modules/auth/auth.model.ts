@@ -11,7 +11,8 @@ export interface IUser extends Document {
   lastName: string;
   email: string;
   password: string;
-  salt: string;
+  /** Legacy HMAC-SHA256 accounts only — bcrypt embeds its own salt. */
+  salt?: string | undefined;
   isVerified: boolean;
   verificationToken?: string | undefined;
   verificationTokenExpiresAt?: Date | undefined;
@@ -19,6 +20,8 @@ export interface IUser extends Document {
   passwordResetTokenExpiresAt?: Date | undefined;
   refreshToken: string | null;
   refreshTokenFamily: string | null;
+  previousRefreshToken: string | null;
+  previousRefreshTokenExpiresAt: Date | null;
   socialIdentities: ISocialIdentity[];
   avatarUrl: string | null;
   phone: string;
@@ -55,9 +58,10 @@ const userSchema = new mongoose.Schema<IUser>(
       required: true,
       select: false,
     },
+    // Only ever set on legacy HMAC-SHA256 accounts, and unset once the user
+    // next logs in and the password is rehashed with bcrypt.
     salt: {
       type: String,
-      required: true,
       select: false,
     },
     isVerified: {
@@ -87,6 +91,18 @@ const userSchema = new mongoose.Schema<IUser>(
     },
     refreshTokenFamily: {
       type: String,
+      default: null,
+      select: false,
+    },
+    // A rotated refresh token stays usable for a short grace window so that
+    // two tabs refreshing at the same instant don't knock each other out.
+    previousRefreshToken: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    previousRefreshTokenExpiresAt: {
+      type: Date,
       default: null,
       select: false,
     },
@@ -127,13 +143,7 @@ const userSchema = new mongoose.Schema<IUser>(
   { timestamps: true },
 );
 
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { unique: true });
-userSchema.index({ verificationToken: 1 });
-userSchema.index({ passwordResetToken: 1 });
-userSchema.index({
-  "socialIdentities.provider": 1,
-  "socialIdentities.providerUserId": 1,
-});
+// email and phone already declare `unique: true` on the field, which builds the
+// index. Repeating it here made Mongoose log a duplicate-index warning on boot.
 
 export const User = model<IUser>("User", userSchema);

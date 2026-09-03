@@ -4,33 +4,56 @@ const auth_services_1 = require("./auth.services");
 const auth_validation_1 = require("./auth.validation");
 const token_1 = require("../../utils/token");
 const auth_model_1 = require("./auth.model");
+const env_1 = require("../../config/env");
 const authService = new auth_services_1.AuthService();
+const IS_PRODUCTION = env_1.env.NODE_ENV === "production";
+// The SPA runs on a different origin (port 3000 in dev, often a different
+// domain in production), so "strict" would stop the browser ever sending the
+// refresh cookie back. "lax" is same-site-safe for localhost; cross-site
+// deployments need "none" + secure.
 const REFRESH_COOKIE_OPTIONS = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: IS_PRODUCTION,
+    sameSite: (IS_PRODUCTION ? "none" : "lax"),
+    path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000,
 };
+const isDuplicateKeyError = (err) => typeof err === "object" &&
+    err !== null &&
+    err.code === 11000;
 class AuthenticationController {
     async handleSignup(req, res) {
-        const validationData = await auth_validation_1.signupPayloadModel.safeParseAsync(req.body);
-        if (!validationData.success) {
+        const validationResult = await auth_validation_1.signupPayloadModel.safeParseAsync(req.body);
+        if (!validationResult.success)
             return res.status(400).json({
-                message: "Validation failed",
-                error: validationData.error.issues,
+                message: "body validation failed",
+                error: validationResult.error.issues,
+            });
+        try {
+            // No pre-flight existence check: the unique indexes on email and phone
+            // are the real guard, and a read-then-write pair is racy anyway.
+            const { user, emailSent } = await authService.signup(validationResult.data);
+            return res.status(201).json({
+                message: emailSent
+                    ? "Account created. Check your email for the verification link."
+                    : "Account created, but the verification email could not be sent. Request a new one at /auth/resend-verification.",
+                data: { id: user.id },
             });
         }
-        const existing = await auth_model_1.User.findOne({ email: validationData.data.email });
-        if (existing) {
-            return res.status(409).json({
-                message: `User with email ${validationData.data.email} already exists`,
+        catch (err) {
+            if (isDuplicateKeyError(err)) {
+                const field = Object.keys(err.keyPattern ?? { email: 1 })[0] ?? "email";
+                return res.status(409).json({
+                    error: "duplicate entry",
+                    message: `user with this ${field} already exists`,
+                });
+            }
+            console.error("signup error:", err);
+            return res.status(500).json({
+                error: "internal server error",
+                message: "something went wrong while creating the user",
             });
         }
-        const result = await authService.signup(validationData.data);
-        return res.status(201).json({
-            message: "Account created. Please verify your email.",
-            data: { result },
-        });
     }
     async handleVerifyEmail(req, res) {
         const result = await auth_validation_1.verifyEmailModel.safeParseAsync(req.body);
@@ -47,6 +70,21 @@ class AuthenticationController {
         catch (err) {
             return res.status(400).json({ message: err.message });
         }
+    }
+    async handleResendVerification(req, res) {
+        const result = await auth_validation_1.resendVerificationModel.safeParseAsync(req.body);
+        if (!result.success) {
+            return res.status(400).json({
+                message: "Validation failed",
+                error: result.error.issues,
+            });
+        }
+        await authService.resendVerification(result.data.email);
+        // always 200 — never reveal whether the address exists or is already
+        // verified
+        return res.status(200).json({
+            message: "If that account needs verifying, a new link has been sent.",
+        });
     }
     async handleLogin(req, res) {
         const result = await auth_validation_1.signinPayloadModel.safeParseAsync(req.body);
@@ -82,9 +120,18 @@ class AuthenticationController {
                 .status(401)
                 .json({ message: "Invalid or expired refresh token" });
         }
-        const user = await auth_model_1.User.findById(payload.sub).select("+refreshToken +refreshTokenFamily");
+        const user = await auth_model_1.User.findById(payload.sub).select("+refreshToken +refreshTokenFamily +previousRefreshToken +previousRefreshTokenExpiresAt");
         if (!user) {
             return res.status(401).json({ message: "User not found" });
+        }
+        // Suspending an account has to end the sessions it already has, not just
+        // block new logins — otherwise it keeps minting access tokens for a week.
+        if (user.status !== "active") {
+            await authService.logout(payload.sub);
+            res.clearCookie("refreshToken", REFRESH_COOKIE_OPTIONS);
+            return res
+                .status(403)
+                .json({ message: "Your account has been suspended" });
         }
         // token reuse detected — entire family compromised
         if (user.refreshTokenFamily !== payload.familyId) {
@@ -93,13 +140,23 @@ class AuthenticationController {
                 .status(401)
                 .json({ message: "Token reuse detected. Please login again." });
         }
-        if (user.refreshToken !== (0, token_1.hashToken)(token)) {
+        const presented = (0, token_1.hashToken)(token);
+        const graceExpiry = user.previousRefreshTokenExpiresAt;
+        const isCurrent = user.refreshToken === presented;
+        const isWithinGrace = !!user.previousRefreshToken &&
+            user.previousRefreshToken === presented &&
+            !!graceExpiry &&
+            graceExpiry.getTime() > Date.now();
+        if (!isCurrent && !isWithinGrace) {
             await authService.logout(payload.sub);
             return res
                 .status(401)
                 .json({ message: "Token mismatch. Please login again." });
         }
-        const { accessToken, refreshToken: newRefreshToken } = await authService.rotateRefreshToken(user._id.toString(), user.email, payload.familyId);
+        const { accessToken, refreshToken: newRefreshToken } = await authService.rotateRefreshToken(user._id.toString(), user.email, user.roles, payload.familyId, 
+        // Whichever token was presented, it is the currently stored one that
+        // is being superseded, so that is the one that gets the grace window.
+        user.refreshToken);
         res.cookie("refreshToken", newRefreshToken, REFRESH_COOKIE_OPTIONS);
         return res.status(200).json({
             message: "Token refreshed",
@@ -130,6 +187,7 @@ class AuthenticationController {
         }
         try {
             await authService.resetPassword(result.data.token, result.data.password);
+            res.clearCookie("refreshToken", REFRESH_COOKIE_OPTIONS);
             return res
                 .status(200)
                 .json({ message: "Password reset successfully. Please login again." });
@@ -142,6 +200,11 @@ class AuthenticationController {
         const user = await auth_model_1.User.findById(req.user?._id);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
+        }
+        if (user.status !== "active") {
+            return res
+                .status(403)
+                .json({ message: "Your account has been suspended" });
         }
         return res.status(200).json({
             data: {
@@ -157,7 +220,10 @@ class AuthenticationController {
         });
     }
     async handleLogout(req, res) {
-        await authService.logout(req.user._id);
+        const userId = req.user?._id;
+        if (userId) {
+            await authService.logout(userId);
+        }
         res.clearCookie("refreshToken", REFRESH_COOKIE_OPTIONS);
         return res.status(200).json({ message: "Logged out successfully" });
     }

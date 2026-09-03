@@ -4,7 +4,7 @@ exports.Booking = void 0;
 const mongoose_1 = require("mongoose");
 const bookingItemSchema = new mongoose_1.Schema({
     ticketTypeId: {
-        type: mongoose_1.Schema.Types.ObjectId,
+        type: String,
         required: true,
     },
     name: { type: String, required: true },
@@ -15,8 +15,8 @@ const bookingItemSchema = new mongoose_1.Schema({
 const bookingSchema = new mongoose_1.Schema({
     user: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: "user",
-        requried: true,
+        ref: "User",
+        required: true,
     },
     event: {
         type: mongoose_1.Schema.Types.ObjectId,
@@ -25,7 +25,7 @@ const bookingSchema = new mongoose_1.Schema({
     },
     organization: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: "Organization",
+        ref: "Organizer",
         required: true,
     },
     items: {
@@ -38,16 +38,16 @@ const bookingSchema = new mongoose_1.Schema({
     },
     totalAmount: {
         type: Number,
-        requried: true,
+        required: true,
         min: 0,
     },
     currency: {
         type: String,
-        default: "USD",
+        default: "NPR",
     },
     status: {
         type: String,
-        enum: ["pending", "Conifirmed", "Cancelled", "Refunded", "Expired"],
+        enum: ["Pending", "Confirmed", "Cancelled", "Refunded", "Expired"],
         default: "Pending",
     },
     paymentIntentId: {

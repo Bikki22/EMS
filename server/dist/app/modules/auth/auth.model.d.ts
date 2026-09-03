@@ -9,7 +9,8 @@ export interface IUser extends Document {
     lastName: string;
     email: string;
     password: string;
-    salt: string;
+    /** Legacy HMAC-SHA256 accounts only — bcrypt embeds its own salt. */
+    salt?: string | undefined;
     isVerified: boolean;
     verificationToken?: string | undefined;
     verificationTokenExpiresAt?: Date | undefined;
@@ -17,6 +18,8 @@ export interface IUser extends Document {
     passwordResetTokenExpiresAt?: Date | undefined;
     refreshToken: string | null;
     refreshTokenFamily: string | null;
+    previousRefreshToken: string | null;
+    previousRefreshTokenExpiresAt: Date | null;
     socialIdentities: ISocialIdentity[];
     avatarUrl: string | null;
     phone: string;

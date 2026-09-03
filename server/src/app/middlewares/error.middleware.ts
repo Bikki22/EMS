@@ -33,6 +33,23 @@ export const errorHandler = (
     });
   }
 
+  // Mongoose cast error — a malformed :id or query value. The client sent
+  // something unusable, so this is a 400, not the 500 it used to fall through
+  // to (which also echoed the internal Mongoose message back to the caller).
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: string }).name === "CastError"
+  ) {
+    const path = (err as { path?: string }).path;
+    return res.status(400).json({
+      success: false,
+      message: path === "_id" ? "Invalid id" : `Invalid value for "${path}"`,
+      errors: [],
+      data: null,
+    });
+  }
+
   // Mongoose validation error
   if (
     typeof err === "object" &&

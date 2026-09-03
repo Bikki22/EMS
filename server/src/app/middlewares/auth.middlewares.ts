@@ -31,3 +31,35 @@ export const authenticate = (
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
+
+/**
+ * Populates `req.user` when a valid token is present and moves on regardless.
+ *
+ * For endpoints that are public but show more to the right caller — fetching
+ * an event by id or slug is public, yet an organizer still needs to preview
+ * their own unpublished event through it.
+ */
+export const optionalAuthenticate = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) => {
+  const token = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.split(" ")[1]
+    : undefined;
+
+  if (token) {
+    try {
+      const payload = verifyAccessToken(token);
+      (req as AuthRequest).user = {
+        _id: payload.sub,
+        email: payload.email,
+        roles: payload.roles,
+      };
+    } catch {
+      // An unusable token is simply an anonymous caller here.
+    }
+  }
+
+  next();
+};

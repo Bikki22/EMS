@@ -64,6 +64,9 @@ class OrganizerController {
   // ─── GET /api/v1/organizers/me ─────────────────────────────
   public getMyOrganizer: RequestHandler = asyncHandler(async (req, res) => {
     const userId = (req as AuthRequest).user?._id;
+    if (!userId) {
+      throw new ApiError(401, "Unauthorized");
+    }
 
     const organizer = await Organizer.findOne({ userId }).lean();
     if (!organizer) {
@@ -78,6 +81,9 @@ class OrganizerController {
   // ─── PATCH /api/v1/organizers/me ───────────────────────────
   public updateMyOrganizer: RequestHandler = asyncHandler(async (req, res) => {
     const userId = (req as AuthRequest).user?._id;
+    if (!userId) {
+      throw new ApiError(401, "Unauthorized");
+    }
 
     const result = await updateOrganizerSchema.safeParseAsync(req.body);
     if (!result.success) {

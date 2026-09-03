@@ -54,6 +54,7 @@ const ticketTypeSchema = new mongoose_1.default.Schema({
     salesStartAt: { type: Date, required: true },
     salesEndAt: { type: Date, required: true },
     quantitySold: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
 });
 const eventLocationSchema = new mongoose_1.default.Schema({
     type: {
@@ -91,6 +92,7 @@ const eventSchema = new mongoose_1.default.Schema({
         index: true,
     },
     totalCapacity: { type: Number, default: 0 },
+    totalBookings: { type: Number, default: 0 },
 }, { timestamps: true });
 eventSchema.pre("save", async function () {
     if (!this.isModified("title") && this.slug)
