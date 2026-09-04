@@ -3,13 +3,34 @@ import { asyncHandler } from "../../utils/AsyncHandler";
 import { ApiError } from "../../utils/ApiError";
 import { ApiResponse } from "../../utils/ApiResponse";
 import { AuthRequest } from "../../types/express";
+import { env } from "../../config/env";
 import { User } from "../auth/auth.model";
 import { paymentService } from "./payment.service";
 import { initiatePaymentSchema } from "./payment.validation";
 
-const CLIENT_URL = (
-  process.env.CLIENT_URL || "http://localhost:3000"
-).replace(/\/$/, "");
+const CLIENT_URL = (env.CLIENT_URL || "http://localhost:3000").replace(
+  /\/$/,
+  "",
+);
+
+/**
+ * Khalti validates customer_info and rejects the whole initiate call over a
+ * malformed phone number — which turns an optional convenience field into a
+ * hard failure for any user whose stored phone is not a plain 10-digit
+ * Nepali mobile number. Send it only when it will pass.
+ */
+const khaltiSafePhone = (phone?: string): string | undefined => {
+  const digits = phone?.replace(/\D/g, "") ?? "";
+  const local = digits.startsWith("977") ? digits.slice(3) : digits;
+  return /^9\d{9}$/.test(local) ? local : undefined;
+};
+
+/** Redirect back to the client without leaking internals into the URL. */
+const failureRedirect = (reason: string, bookingId?: string): string => {
+  const params = new URLSearchParams({ reason });
+  if (bookingId) params.set("bookingId", bookingId);
+  return `${CLIENT_URL}/payment/failure?${params.toString()}`;
+};
 
 class PaymentController {
   // ─── POST /api/v1/payments/initiate ────────────────────────
@@ -31,13 +52,15 @@ class PaymentController {
     }
 
     const user = await User.findById(userId).lean();
-    const customer = user
-      ? {
-          name: `${user.firstName} ${user.lastName ?? ""}`.trim(),
-          email: user.email,
-          phone: user.phone,
-        }
-      : undefined;
+    let customer: { name?: string; email?: string; phone?: string } | undefined;
+    if (user) {
+      const phone = khaltiSafePhone(user.phone);
+      customer = {
+        name: `${user.firstName} ${user.lastName ?? ""}`.trim(),
+        email: user.email,
+        ...(phone ? { phone } : {}),
+      };
+    }
 
     const payment = await paymentService.initiate(
       result.data.bookingId,
@@ -46,52 +69,60 @@ class PaymentController {
       customer,
     );
 
-    res
-      .status(200)
-      .json(new ApiResponse(200, payment, "Payment initiated"));
+    res.status(200).json(new ApiResponse(200, payment, "Payment initiated"));
   });
 
   // ─── GET /api/v1/payments/khalti/callback ──────────────────
   // Public. Khalti redirects the payer's browser here with ?pidx=...
   public khaltiCallback: RequestHandler = asyncHandler(async (req, res) => {
-    const pidx = req.query.pidx as string | undefined;
+    const pidx = typeof req.query.pidx === "string" ? req.query.pidx : undefined;
     if (!pidx) {
-      return res.redirect(`${CLIENT_URL}/payment/failure?reason=missing_pidx`);
+      return res.redirect(failureRedirect("missing_pidx"));
     }
 
     try {
       const { bookingId, confirmed } = await paymentService.verifyKhalti(pidx);
-      const target = confirmed ? "success" : "failure";
+      if (!confirmed) {
+        return res.redirect(failureRedirect("payment_not_completed", bookingId));
+      }
       return res.redirect(
-        `${CLIENT_URL}/payment/${target}?bookingId=${bookingId}`,
+        `${CLIENT_URL}/payment/success?bookingId=${encodeURIComponent(bookingId)}`,
       );
     } catch (err) {
-      const reason = encodeURIComponent(
-        err instanceof Error ? err.message : "verification_failed",
+      // The message is shown to the payer, so keep it to something a person
+      // can act on; the detail is already on the payment record and in logs.
+      console.error("khalti callback verification failed:", err);
+      return res.redirect(
+        failureRedirect(
+          err instanceof ApiError ? err.message : "verification_failed",
+        ),
       );
-      return res.redirect(`${CLIENT_URL}/payment/failure?reason=${reason}`);
     }
   });
 
   // ─── GET /api/v1/payments/esewa/callback ───────────────────
   // Public. eSewa redirects here with a base64 ?data=... payload on success.
   public esewaCallback: RequestHandler = asyncHandler(async (req, res) => {
-    const data = req.query.data as string | undefined;
+    const data = typeof req.query.data === "string" ? req.query.data : undefined;
     if (!data) {
-      return res.redirect(`${CLIENT_URL}/payment/failure?reason=missing_data`);
+      return res.redirect(failureRedirect("missing_data"));
     }
 
     try {
       const { bookingId, confirmed } = await paymentService.verifyEsewa(data);
-      const target = confirmed ? "success" : "failure";
+      if (!confirmed) {
+        return res.redirect(failureRedirect("payment_not_completed", bookingId));
+      }
       return res.redirect(
-        `${CLIENT_URL}/payment/${target}?bookingId=${bookingId}`,
+        `${CLIENT_URL}/payment/success?bookingId=${encodeURIComponent(bookingId)}`,
       );
     } catch (err) {
-      const reason = encodeURIComponent(
-        err instanceof Error ? err.message : "verification_failed",
+      console.error("esewa callback verification failed:", err);
+      return res.redirect(
+        failureRedirect(
+          err instanceof ApiError ? err.message : "verification_failed",
+        ),
       );
-      return res.redirect(`${CLIENT_URL}/payment/failure?reason=${reason}`);
     }
   });
 }
