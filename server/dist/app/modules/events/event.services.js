@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventService = void 0;
 const event_model_1 = require("./event.model");
-const organizer_model_1 = require("./organizer.model");
+const organizer_model_1 = require("../organizers/organizer.model");
 const booking_model_1 = require("../bookings/booking.model");
 // Filter values are interpolated into a RegExp for case-insensitive matching.
 // Unescaped, a stray "(" from a query string throws and a crafted value is a

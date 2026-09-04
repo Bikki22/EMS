@@ -1,7 +1,7 @@
 import type { CreateEventData, EventFilters } from "./event.types";
 import { UpdateEventInput } from "./event.validation";
 export declare class EventService {
-    getOrganizerByUserId(userId: string): Promise<(import("mongoose").Document<unknown, {}, import("./organizer.model").IOrganizer, {}, import("mongoose").DefaultSchemaOptions> & import("./organizer.model").IOrganizer & Required<{
+    getOrganizerByUserId(userId: string): Promise<(import("mongoose").Document<unknown, {}, import("../organizers/organizer.model").IOrganizer, {}, import("mongoose").DefaultSchemaOptions> & import("../organizers/organizer.model").IOrganizer & Required<{
         _id: import("mongoose").Types.ObjectId;
     }> & {
         __v: number;

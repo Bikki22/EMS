@@ -5,7 +5,7 @@ import type {
   EventFilters,
 } from "./event.types";
 import { UpdateEventInput, TicketTypeInput } from "./event.validation";
-import { Organizer } from "./organizer.model";
+import { Organizer } from "../organizers/organizer.model";
 import { Booking } from "../bookings/booking.model";
 
 // Filter values are interpolated into a RegExp for case-insensitive matching.

@@ -3,22 +3,26 @@ import { asyncHandler } from "../../utils/AsyncHandler";
 import { ApiError } from "../../utils/ApiError";
 import { ApiResponse } from "../../utils/ApiResponse";
 import { AuthRequest } from "../../types/express";
-import { Organizer } from "../events/organizer.model";
-import { User } from "../auth/auth.model";
+import { organizerService } from "./organizer.service";
 import {
   createOrganizerSchema,
   updateOrganizerSchema,
 } from "./organizer.validation";
+
+const requireUserId = (req: Parameters<RequestHandler>[0]): string => {
+  const userId = (req as AuthRequest).user?._id;
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
+  return userId;
+};
 
 class OrganizerController {
   // ─── POST /api/v1/organizers ───────────────────────────────
   // Create an organizer profile for the authenticated user and promote them
   // to the org_owner role so they can manage events.
   public createOrganizer: RequestHandler = asyncHandler(async (req, res) => {
-    const userId = (req as AuthRequest).user?._id;
-    if (!userId) {
-      throw new ApiError(401, "Unauthorized");
-    }
+    const userId = requireUserId(req);
 
     const result = await createOrganizerSchema.safeParseAsync(req.body);
     if (!result.success) {
@@ -29,33 +33,18 @@ class OrganizerController {
       );
     }
 
-    const existing = await Organizer.findOne({ userId });
-    if (existing) {
-      throw new ApiError(409, "You already have an organizer profile");
-    }
-
-    const organizer = await Organizer.create({
-      userId,
-      name: result.data.name,
-      ...(result.data.bio !== undefined ? { bio: result.data.bio } : {}),
-      ...(result.data.website !== undefined
-        ? { website: result.data.website }
-        : {}),
-      ...(result.data.logoUrl !== undefined
-        ? { logoUrl: result.data.logoUrl }
-        : {}),
-    });
-
-    // promote to org_owner (unless already an admin)
-    await User.updateOne(
-      { _id: userId, roles: { $ne: "admin" } },
-      { $set: { roles: "org_owner" } },
-    );
+    const organizer = await organizerService.create(userId, result.data);
 
     res.status(201).json(
       new ApiResponse(
         201,
-        { organizer, note: "Log in again to refresh your role permissions." },
+        {
+          organizer,
+          // The role lives in the 15-minute access token, so the current one
+          // still says "user". Hitting /auth/refresh re-reads the role from
+          // the database and mints a token with it — no re-login needed.
+          note: "Call /auth/refresh to pick up your new organizer permissions.",
+        },
         "Organizer profile created",
       ),
     );
@@ -63,12 +52,9 @@ class OrganizerController {
 
   // ─── GET /api/v1/organizers/me ─────────────────────────────
   public getMyOrganizer: RequestHandler = asyncHandler(async (req, res) => {
-    const userId = (req as AuthRequest).user?._id;
-    if (!userId) {
-      throw new ApiError(401, "Unauthorized");
-    }
+    const userId = requireUserId(req);
 
-    const organizer = await Organizer.findOne({ userId }).lean();
+    const organizer = await organizerService.getByUserId(userId);
     if (!organizer) {
       throw new ApiError(404, "You don't have an organizer profile yet");
     }
@@ -80,10 +66,7 @@ class OrganizerController {
 
   // ─── PATCH /api/v1/organizers/me ───────────────────────────
   public updateMyOrganizer: RequestHandler = asyncHandler(async (req, res) => {
-    const userId = (req as AuthRequest).user?._id;
-    if (!userId) {
-      throw new ApiError(401, "Unauthorized");
-    }
+    const userId = requireUserId(req);
 
     const result = await updateOrganizerSchema.safeParseAsync(req.body);
     if (!result.success) {
@@ -94,15 +77,10 @@ class OrganizerController {
       );
     }
 
-    const organizer = await Organizer.findOneAndUpdate(
-      { userId },
-      { $set: result.data },
-      { new: true },
+    const organizer = await organizerService.updateByUserId(
+      userId,
+      result.data,
     );
-
-    if (!organizer) {
-      throw new ApiError(404, "You don't have an organizer profile yet");
-    }
 
     res
       .status(200)

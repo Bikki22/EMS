@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendPasswordResetEmail = exports.sendVerificationEmail = void 0;
+exports.sendTicketTransferEmail = exports.sendPasswordResetEmail = exports.sendVerificationEmail = void 0;
 const nodemailer_1 = require("../libs/nodemailer");
 const FROM = `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM_ADDRESS}>`;
 const sendVerificationEmail = async (to, token) => {
@@ -32,4 +32,20 @@ const sendPasswordResetEmail = async (to, token) => {
     });
 };
 exports.sendPasswordResetEmail = sendPasswordResetEmail;
+const sendTicketTransferEmail = async (to, ticket) => {
+    const link = `${process.env.CLIENT_URL}/tickets`;
+    await nodemailer_1.transporter.sendMail({
+        from: FROM,
+        to,
+        subject: `You've received a ticket for ${ticket.eventTitle}`,
+        html: `
+      <h2>A ticket is waiting for you</h2>
+      <p>Someone transferred you a <strong>${ticket.ticketName}</strong> ticket for
+      <strong>${ticket.eventTitle}</strong>, starting ${ticket.startsAt.toLocaleString()}.</p>
+      <p>Open your tickets to see the QR code you'll need at the door.</p>
+      <a href="${link}">${link}</a>
+    `,
+    });
+};
+exports.sendTicketTransferEmail = sendTicketTransferEmail;
 //# sourceMappingURL=email.js.map

@@ -36,3 +36,22 @@ export const sendPasswordResetEmail = async (
     `,
   });
 };
+
+export const sendTicketTransferEmail = async (
+  to: string,
+  ticket: { eventTitle: string; ticketName: string; startsAt: Date },
+): Promise<void> => {
+  const link = `${process.env.CLIENT_URL}/tickets`;
+  await transporter.sendMail({
+    from: FROM,
+    to,
+    subject: `You've received a ticket for ${ticket.eventTitle}`,
+    html: `
+      <h2>A ticket is waiting for you</h2>
+      <p>Someone transferred you a <strong>${ticket.ticketName}</strong> ticket for
+      <strong>${ticket.eventTitle}</strong>, starting ${ticket.startsAt.toLocaleString()}.</p>
+      <p>Open your tickets to see the QR code you'll need at the door.</p>
+      <a href="${link}">${link}</a>
+    `,
+  });
+};

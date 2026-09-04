@@ -19,7 +19,8 @@ const organizerSchema = new mongoose.Schema<IOrganizer>(
       ref: "User",
       required: true,
       unique: true,
-      index: true,
+      // `unique` already builds the index; a second `index: true` here makes
+      // Mongoose warn about a duplicate schema index at boot.
     },
     name: { type: String, required: true, trim: true },
     bio: { type: String, trim: true },

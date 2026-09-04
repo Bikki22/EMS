@@ -1,7 +1,7 @@
 import type { Response, NextFunction } from "express";
 import { AuthRequest } from "../types/express";
 import { OrganizerRequest } from "../modules/events/event.types";
-import { Organizer } from "../modules/events/organizer.model";
+import { Organizer } from "../modules/organizers/organizer.model";
 
 // ensures the authenticated user has an organizer profile
 export const requireOrganizer = async (

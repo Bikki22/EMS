@@ -1,4 +1,7 @@
-import mongoose, { Document, Schema, Types, model } from "mongoose";
+import { Document, Schema, Types, model } from "mongoose";
+
+export const TICKET_STATUSES = ["active", "used", "cancelled"] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 export interface ITicket extends Document {
   _id: Types.ObjectId;
@@ -8,11 +11,18 @@ export interface ITicket extends Document {
   ticketTypeId: Types.ObjectId;
   ticketName: string;
   qrToken: string;
-  status: "active" | "used" | "cancelled" | "transferred";
+  // A transfer reassigns `user` in place, so a ticket stays "active" and the
+  // recipient can check it in. There is no "transferred" status: the ticket
+  // itself is never retired, only its owner changes.
+  status: TicketStatus;
   checkedInAt?: Date;
   checkedInBy?: Types.ObjectId;
-  transferredTo?: Types.ObjectId;
+  // Original issuee, set the first time the ticket changes hands and never
+  // overwritten, so a chain of transfers still points back to the buyer.
+  originalOwner?: Types.ObjectId;
+  transferredFrom?: Types.ObjectId;
   transferredAt?: Date;
+  transferCount: number;
   issuedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -47,12 +57,14 @@ const ticketSchema = new Schema<ITicket>(
     qrToken: {
       type: String,
       required: [true, "QR token is required"],
+      // `unique` builds the index on its own; declaring it again below made
+      // Mongoose warn about a duplicate schema index at boot.
       unique: true,
       select: false,
     },
     status: {
       type: String,
-      enum: ["active", "used", "cancelled", "transferred"],
+      enum: TICKET_STATUSES,
       default: "active",
     },
     checkedInAt: {
@@ -62,12 +74,21 @@ const ticketSchema = new Schema<ITicket>(
       type: Schema.Types.ObjectId,
       ref: "User",
     },
-    transferredTo: {
+    originalOwner: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+    transferredFrom: {
       type: Schema.Types.ObjectId,
       ref: "User",
     },
     transferredAt: {
       type: Date,
+    },
+    transferCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     issuedAt: {
       type: Date,
@@ -80,7 +101,6 @@ const ticketSchema = new Schema<ITicket>(
 ticketSchema.index({ booking: 1 });
 ticketSchema.index({ event: 1 });
 ticketSchema.index({ user: 1 });
-ticketSchema.index({ qrToken: 1 }, { unique: true });
 ticketSchema.index({ status: 1 });
 ticketSchema.index({ event: 1, status: 1 });
 ticketSchema.index({ user: 1, event: 1 });

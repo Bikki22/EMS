@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireOrganizer = void 0;
-const organizer_model_1 = require("../modules/events/organizer.model");
+const organizer_model_1 = require("../modules/organizers/organizer.model");
 // ensures the authenticated user has an organizer profile
 const requireOrganizer = async (req, res, next) => {
     if (!req.user) {
